@@ -32,4 +32,5 @@ private:
     long long read_file_long(const std::string& path);
     long long read_cpu_usage(const std::string& container_id);
     long long read_memory_usage(const std::string& container_id);
+    long long read_memory_stat_key(const std::string& container_id, const std::string& key);
 };

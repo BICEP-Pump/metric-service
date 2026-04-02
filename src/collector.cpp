@@ -77,7 +77,35 @@ long long Collector::read_memory_usage(const std::string& container_id) {
     if (!fs::exists(path)) {
         path = cgroup_root + "/docker/" + container_id + "/memory.current";
     }
-    return read_file_long(path);
+    long long total_mem = read_file_long(path);
+    if (total_mem == -1) return -1;
+
+    // Subtract inactive_file to get "Actual Usage"
+    long long inactive_file = read_memory_stat_key(container_id, "inactive_file");
+    if (inactive_file != -1) {
+        total_mem -= inactive_file;
+    }
+    
+    return (total_mem < 0) ? 0 : total_mem;
+}
+
+long long Collector::read_memory_stat_key(const std::string& container_id, const std::string& key) {
+    std::string path = cgroup_root + "/system.slice/docker-" + container_id + ".scope/memory.stat";
+    if (!fs::exists(path)) {
+        path = cgroup_root + "/docker/" + container_id + "/memory.stat";
+    }
+
+    std::ifstream file(path);
+    if (!file.is_open()) return -1;
+
+    std::string line, k;
+    long long value;
+    while (std::getline(file, line)) {
+        std::stringstream ss(line);
+        ss >> k >> value;
+        if (k == key) return value;
+    }
+    return -1;
 }
 
 double Collector::calculate_cpu_percent(const std::string& container_id, long long current_usage_usec) {

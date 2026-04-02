@@ -55,3 +55,14 @@ TEST(ExporterTest, EmptyMetrics) {
     exporter.flush();
     EXPECT_EQ(push_count, 0);
 }
+
+TEST(ExporterTest, BatchSizeOne) {
+    int push_count = 0;
+    Exporter exporter("http://localhost:8080", 1);
+    exporter.set_push_function([&](const std::vector<ContainerMetric>&) {
+        push_count++;
+    });
+
+    exporter.add_metrics({{"c1", 1.0, 100.0, 1000}});
+    EXPECT_EQ(push_count, 1);
+}

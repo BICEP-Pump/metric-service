@@ -32,6 +32,7 @@ FetchContent_MakeAvailable(json)
 add_library(metric_service_lib STATIC
     src/collector.cpp
     src/exporter.cpp
+    src/utils.cpp
 )
 target_link_libraries(metric_service_lib PUBLIC httplib::httplib nlohmann_json::nlohmann_json)
 
@@ -68,6 +69,7 @@ if(BUILD_TESTS)
         tests/main_tests.cpp
         tests/test_collector.cpp
         tests/test_exporter.cpp
+        tests/test_utils.cpp
     )
     target_link_libraries(bicep_tests PRIVATE
         metric_service_lib
