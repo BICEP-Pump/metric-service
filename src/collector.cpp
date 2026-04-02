@@ -15,7 +15,14 @@ Collector::Collector(const std::string& root) : cgroup_root(root) {
     update_container_mapping();
 }
 
+void Collector::set_container_mapping(const std::map<std::string, std::string>& mapping) {
+    id_to_name_map = mapping;
+    bypass_docker_api = true;
+}
+
 void Collector::update_container_mapping() {
+    if (bypass_docker_api) return;
+
     httplib::Client cli("/var/run/docker.sock");
     cli.set_address_family(AF_UNIX);
     

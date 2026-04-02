@@ -2,6 +2,8 @@
 #include "../src/collector.hpp"
 #include <filesystem>
 #include <fstream>
+#include <thread>
+#include <chrono>
 
 namespace fs = std::filesystem;
 
@@ -24,41 +26,52 @@ protected:
     }
 };
 
-TEST_F(CollectorTest, ReadCpuUsageParsing) {
-    std::string cpu_stat_path = test_root + "/system.slice/docker-123.scope/cpu.stat";
-    
-    // Valid
-    write_file(cpu_stat_path, "usage_usec 1000000\n");
+TEST_F(CollectorTest, FullCollectionLoop) {
     Collector collector(test_root);
-    // Since read_cpu_usage is private, we'll assume the public interface or logic handles it.
-    // For coverage, we'd need to mock the full collector.collect() with a fake docker socket or bypass it.
+    std::map<std::string, std::string> mapping = {{"123", "test-container"}};
+    collector.set_container_mapping(mapping);
+
+    // Setup mock cgroup files
+    write_file(test_root + "/system.slice/docker-123.scope/cpu.stat", "usage_usec 1000\n");
+    write_file(test_root + "/system.slice/docker-123.scope/memory.current", "1048576\n"); // 1MB
+    write_file(test_root + "/system.slice/docker-123.scope/memory.stat", "inactive_file 0\n");
+
+    auto metrics = collector.collect();
+    ASSERT_EQ(metrics.size(), 1);
+    EXPECT_EQ(metrics[0].name, "test-container");
+    EXPECT_EQ(metrics[0].ram_mb, 1.0);
 }
 
-TEST_F(CollectorTest, MemoryRefinementLogic) {
-    std::string mem_curr_path = test_root + "/docker/456/memory.current";
-    std::string mem_stat_path = test_root + "/docker/456/memory.stat";
-    
-    write_file(mem_curr_path, "1000000\n"); // 1MB total
-    write_file(mem_stat_path, "inactive_file 200000\nanon 100\n"); // 0.2MB inactive
-    
-    // Logic check: 1,000,000 - 200,000 = 800,000 bytes
+TEST_F(CollectorTest, CpuPercentCalculation) {
     Collector collector(test_root);
-    // We expect the internal reading to calculate 800,000
+    std::string id = "123";
+
+    // First sample
+    double p1 = collector.calculate_cpu_percent(id, 1000000); // 1s usage
+    EXPECT_EQ(p1, 0.0);
+
+    // Wait a bit
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    // Second sample (0.1s usage in the elapsed time)
+    double p2 = collector.calculate_cpu_percent(id, 1100000); 
+    EXPECT_GT(p2, 0.0);
 }
 
-TEST_F(CollectorTest, MissingStatFile) {
-    std::string mem_curr_path = test_root + "/docker/456/memory.current";
-    write_file(mem_curr_path, "1000000\n");
-    // No memory.stat file present
-    
+TEST_F(CollectorTest, MemoryRefinement) {
     Collector collector(test_root);
-    // Should fallback to full memory.current if stat is missing
+    
+    write_file(test_root + "/docker/456/memory.current", "2097152\n"); // 2MB
+    write_file(test_root + "/docker/456/memory.stat", "inactive_file 1048576\n"); // 1MB cache
+    
+    long long usage = collector.read_memory_usage("456");
+    EXPECT_EQ(usage, 1048576); // Should return 1MB (2MB - 1MB)
 }
 
-TEST_F(CollectorTest, InvalidFileContent) {
-    std::string cpu_stat_path = test_root + "/system.slice/docker-123.scope/cpu.stat";
-    write_file(cpu_stat_path, "junk data 123\n");
-    
+TEST_F(CollectorTest, MissingFilesHandling) {
     Collector collector(test_root);
-    // Should handle malformed files gracefully.
+    
+    // Non-existent ID
+    EXPECT_EQ(collector.read_cpu_usage("999"), -1);
+    EXPECT_EQ(collector.read_memory_usage("999"), -1);
 }

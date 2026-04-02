@@ -12,5 +12,6 @@ struct Config {
     std::string service_ip = "";
 };
 
-Config get_config();
 std::string discover_ip();
+std::string parse_ifaddrs(struct ifaddrs* ifaddr);
+Config get_config();

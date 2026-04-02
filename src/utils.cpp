@@ -12,13 +12,23 @@
 #include <sys/socket.h>
 
 std::string discover_ip() {
-    struct ifaddrs *ifaddr, *ifa;
+    struct ifaddrs *ifaddr;
     std::string ip = "127.0.0.1";
 
     if (getifaddrs(&ifaddr) == -1) {
         perror("getifaddrs");
         return ip;
     }
+
+    ip = parse_ifaddrs(ifaddr);
+
+    freeifaddrs(ifaddr);
+    return ip;
+}
+
+std::string parse_ifaddrs(struct ifaddrs* ifaddr) {
+    std::string ip = "127.0.0.1";
+    struct ifaddrs* ifa;
 
     for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
         if (ifa->ifa_addr == NULL) continue;
