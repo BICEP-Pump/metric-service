@@ -2,7 +2,7 @@
 
 ![Build Status](https://github.com/bicep-pump/metric-service/actions/workflows/unit-tests.yml/badge.svg)
 ![Coverage](https://codecov.io/gh/bicep-pump/metric-service/branch/main/graph/badge.svg)
-![GHCR Version](https://img.shields.io/github/v/tag/bicep-pump/metric-service?label=ghcr.io&logo=docker)
+![GHCR Version](https://ghcr-badge.egpl.dev/bicep-pump/metric-service/latest_tag?label=Latest%20Version)
 ![Last Commit](https://img.shields.io/github/last-commit/bicep-pump/metric-service)
 
 High-performance C++ service to monitor containerized environments via cgroups v2.
