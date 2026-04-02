@@ -14,23 +14,30 @@ found=0
 start_time=$(date +%s)
 
 while [ $(($(date +%s) - start_time)) -lt $TIMEOUT ]; do
-    response=$(curl -s $MOCK_URL || echo "{}")
-    
-    # Use sed for robust JSON count extraction (works even without jq)
-    reg_count=$(echo "$response" | sed -n 's/.*"registrations_count": \([0-9]*\).*/\1/p' || echo 0)
-    met_count=$(echo "$response" | sed -n 's/.*"metrics_count": \([0-9]*\).*/\1/p' || echo 0)
-    
-    # Default to 0 if extraction failed
-    reg_count=${reg_count:-0}
-    met_count=${met_count:-0}
+    # curl -sS is better (shows errors, but stays silent on progress)
+    # --fail: return non-zero if HTTP error status like 404/500
+    # --connect-timeout 2: don't hang too long
+    response=$(curl -sS --fail --connect-timeout 2 "$MOCK_URL" || echo "ERRORED")
 
-    echo "DEBUG: Raw response sample: $(echo $response | cut -c1-100)..."
-    echo "Current status: Registrations=$reg_count, Batches=$met_count"
-    
-    if [ "$reg_count" -gt 0 ] && [ "$met_count" -gt 0 ]; then
-        echo "SUCCESS: Integration test passed!"
-        found=1
-        break
+    if [ "$response" == "ERRORED" ] || [ -z "$response" ]; then
+        echo "DEBUG: Waiting for mock-backend to be reachable..."
+    else
+        # Robust parsing: handles both minified and pretty JSON, spaces and newlines
+        reg_count=$(echo "$response" | grep -oE '"registrations_count":\s*[0-9]+' | grep -oE '[0-9]+' | head -1 || echo 0)
+        met_count=$(echo "$response" | grep -oE '"metrics_count":\s*[0-9]+' | grep -oE '[0-9]+' | head -1 || echo 0)
+        
+        # Default to 0 if extraction failed
+        reg_count=${reg_count:-0}
+        met_count=${met_count:-0}
+
+        echo "DEBUG: Response: $response"
+        echo "Current status: Registrations=$reg_count, Batches=$met_count"
+        
+        if [ "$met_count" -gt 0 ] && [ "$reg_count" -gt 0 ]; then
+            echo "SUCCESS: Integration test passed!"
+            found=1
+            break
+        fi
     fi
     
     sleep $INTERVAL
