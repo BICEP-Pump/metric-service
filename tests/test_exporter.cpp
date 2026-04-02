@@ -66,3 +66,27 @@ TEST(ExporterTest, BatchSizeOne) {
     exporter.add_metrics({{"c1", 1.0, 100.0, 1000}});
     EXPECT_EQ(push_count, 1);
 }
+
+TEST(ExporterTest, RealNetworkPush) {
+    httplib::Server svr;
+    bool received = false;
+    
+    svr.Post("/metrics", [&](const httplib::Request& req, httplib::Response& res) {
+        received = true;
+        auto j = nlohmann::json::parse(req.body);
+        EXPECT_TRUE(j.is_array());
+        res.set_status(200);
+    });
+
+    std::thread server_thread([&svr]() {
+        svr.listen("127.0.0.1", 9092);
+    });
+    server_thread.detach();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    Exporter exporter("http://127.0.0.1:9092/metrics", 1);
+    exporter.add_metrics({{"test", 10.5, 256.0, 123456789}});
+    
+    EXPECT_TRUE(received);
+    svr.stop();
+}

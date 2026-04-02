@@ -20,10 +20,12 @@ public:
     // For testing: Bypass Docker API mapping
     void set_container_mapping(const std::map<std::string, std::string>& mapping);
 
-    // Make internal methods testable
+    // Public methods for testability
     long long read_cpu_usage(const std::string& container_id);
     long long read_memory_usage(const std::string& container_id);
     long long read_memory_stat_key(const std::string& container_id, const std::string& key);
+    double calculate_cpu_percent(const std::string& container_id, long long current_usage_usec);
+    long long read_file_long(const std::string& path);
 
 private:
     struct CpuSnapshot {
@@ -37,9 +39,4 @@ private:
     std::map<std::string, CpuSnapshot> prev_cpu_stats;
 
     void update_container_mapping();
-    double calculate_cpu_percent(const std::string& container_id, long long current_usage_usec);
-    long long read_file_long(const std::string& path);
-    long long read_cpu_usage(const std::string& container_id);
-    long long read_memory_usage(const std::string& container_id);
-    long long read_memory_stat_key(const std::string& container_id, const std::string& key);
 };

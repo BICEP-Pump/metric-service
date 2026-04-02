@@ -71,7 +71,40 @@ TEST_F(CollectorTest, MemoryRefinement) {
 TEST_F(CollectorTest, MissingFilesHandling) {
     Collector collector(test_root);
     
-    // Non-existent ID
     EXPECT_EQ(collector.read_cpu_usage("999"), -1);
     EXPECT_EQ(collector.read_memory_usage("999"), -1);
+}
+
+TEST_F(CollectorTest, PermissionDenied) {
+    std::string path = test_root + "/docker/456/memory.current";
+    write_file(path, "12345\n");
+    
+    // Remove read permissions
+    fs::permissions(path, fs::perms::none);
+    
+    Collector collector(test_root);
+    EXPECT_EQ(collector.read_file_long(path), -1);
+    
+    // Restore for cleanup
+    fs::permissions(path, fs::perms::owner_read | fs::perms::owner_write);
+}
+
+TEST_F(CollectorTest, SymbolicLinkSupport) {
+    std::string real_path = test_root + "/real_cpu_stat";
+    write_file(real_path, "usage_usec 5000\n");
+    
+    std::string link_path = test_root + "/docker/456/cpu.stat";
+    fs::create_symlink(real_path, link_path);
+    
+    Collector collector(test_root);
+    EXPECT_EQ(collector.read_cpu_usage("456"), 5000);
+}
+
+TEST_F(CollectorTest, MalformedStatFile) {
+    std::string path = test_root + "/docker/456/memory.stat";
+    write_file(path, "only_key_no_value\nwrong_value_type string\ninactive_file 999\n");
+    
+    Collector collector(test_root);
+    EXPECT_EQ(collector.read_memory_stat_key("456", "inactive_file"), 999);
+    EXPECT_EQ(collector.read_memory_stat_key("456", "only_key_no_value"), -1);
 }

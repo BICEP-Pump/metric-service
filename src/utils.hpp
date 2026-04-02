@@ -15,3 +15,4 @@ struct Config {
 std::string discover_ip();
 std::string parse_ifaddrs(struct ifaddrs* ifaddr);
 Config get_config();
+void register_service(const Config& config);
