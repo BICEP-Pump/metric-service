@@ -23,11 +23,12 @@ def register():
 
 @app.route('/verify', methods=['GET'])
 def verify():
+    # SLIMMED DOWN: Only return counts and last registration to avoid massive JSON payloads
     return jsonify({
         "metrics_count": len(received_metrics),
         "registrations_count": len(received_registrations),
         "last_registration": received_registrations[-1] if received_registrations else None,
-        "metrics": received_metrics
+        # "metrics": received_metrics # REMOVED: potentially massive array
     }), 200
 
 if __name__ == '__main__':
