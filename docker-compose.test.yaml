@@ -1,0 +1,25 @@
+services:
+  bicep-metric-service:
+    build: .
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+    privileged: true
+    environment:
+      - METRIC_ENDPOINT=http://mock-backend:5000/metrics
+      - REGISTRATION_ENDPOINT=http://mock-backend:5000/register
+      - SCRAPE_INTERVAL=2
+      - BATCH_SIZE=2
+      - SERVICE_NAME=integration-test-service
+      - SERVICE_PORT=8080
+    depends_on:
+      - mock-backend
+
+  mock-backend:
+    image: python:3.9-slim
+    volumes:
+      - ./tests:/tests
+    command: >
+      sh -c "pip install flask && python /tests/mock_backend.py"
+    ports:
+      - "5000:5000"
