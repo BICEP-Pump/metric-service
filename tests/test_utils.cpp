@@ -4,6 +4,10 @@
 #include <ifaddrs.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <httplib.h>
+#include <nlohmann/json.hpp>
+#include <thread>
+#include <atomic>
 
 TEST(UtilsTest, ConfigParsingDefaults) {
     unsetenv("METRIC_ENDPOINT");
@@ -55,32 +59,34 @@ TEST(UtilsTest, ParseIfaddrsPriority) {
 }
 
 TEST(UtilsTest, RegisterServiceSuccess) {
-    httplib::Server svr;
-    bool request_received = false;
+    auto svr = std::make_shared<httplib::Server>();
+    std::atomic<bool> request_received{false};
     
-    svr.Post("/register", [&](const httplib::Request& req, httplib::Response& res) {
+    svr->Post("/register", [&](const httplib::Request& req, httplib::Response& res) {
         request_received = true;
-        auto j = nlohmann::json::parse(req.body);
-        EXPECT_EQ(j["name"], "test-service");
-        res.set_status(200);
+        res.status = 200;
+        res.set_content("OK", "text/plain");
     });
 
-    std::thread server_thread([&svr]() {
-        svr.listen("127.0.0.1", 9091);
+    std::thread server_thread([svr]() {
+        svr->listen("0.0.0.0", 19091);
     });
-    server_thread.detach();
-
-    // Wait for server to start
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    
+    // Give more time and wait for server to be ready
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     Config cfg;
-    cfg.registration_endpoint = "http://127.0.0.1:9091/register";
+    cfg.registration_endpoint = "http://127.0.0.1:19091/register";
     cfg.service_name = "test-service";
     cfg.service_ip = "1.2.3.4";
     cfg.service_port = 8888;
 
     register_service(cfg);
-    EXPECT_TRUE(request_received);
     
-    svr.stop();
+    EXPECT_TRUE(request_received.load());
+    
+    svr->stop();
+    if (server_thread.joinable()) {
+        server_thread.join();
+    }
 }

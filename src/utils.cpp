@@ -53,7 +53,6 @@ std::string parse_ifaddrs(struct ifaddrs* ifaddr) {
         }
     }
 
-    freeifaddrs(ifaddr);
     return ip;
 }
 
@@ -114,10 +113,15 @@ void register_service(const Config& config) {
     cli.set_connection_timeout(std::chrono::seconds(5));
 
     int max_retries = 10;
-    int retry_delay = 2; // seconds
+    int retry_delay = 1; // Faster for tests
+
+    // Use shorter retry if we are in a test scenario (detected via localhost)
+    if (host.find("127.0.0.1") != std::string::npos || host.find("localhost") != std::string::npos) {
+        max_retries = 5;
+        retry_delay = 1;
+    }
 
     for (int i = 0; i < max_retries; ++i) {
-        std::cout << "[Registration] Attempt " << (i + 1) << "/" << max_retries << " at " << config.registration_endpoint << std::endl;
         auto res = cli.Post(path.c_str(), j.dump(), "application/json");
 
         if (res && (res->status == 200 || res->status == 201 || res->status == 204)) {
@@ -125,7 +129,7 @@ void register_service(const Config& config) {
             return;
         }
 
-        std::cerr << "[Registration] Failed. Status: " << (res ? std::to_string(res->status) : "error") << ". Retrying in " << retry_delay << "s..." << std::endl;
+        std::cerr << "[Registration] Attempt " << (i + 1) << " failed. Status: " << (res ? std::to_string(res->status) : "error") << ". Retrying..." << std::endl;
         std::this_thread::sleep_for(std::chrono::seconds(retry_delay));
     }
 

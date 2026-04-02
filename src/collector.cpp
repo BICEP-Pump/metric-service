@@ -54,7 +54,7 @@ long long Collector::read_file_long(const std::string& path) {
     std::ifstream file(path);
     if (!file.is_open()) return -1;
     long long value;
-    file >> value;
+    if (!(file >> value)) return -1;
     return value;
 }
 
@@ -73,8 +73,9 @@ long long Collector::read_cpu_usage(const std::string& container_id) {
     long long value;
     while (std::getline(file, line)) {
         std::stringstream ss(line);
-        ss >> key >> value;
-        if (key == "usage_usec") return value;
+        if (ss >> key >> value) {
+            if (key == "usage_usec") return value;
+        }
     }
     return -1;
 }
@@ -109,8 +110,9 @@ long long Collector::read_memory_stat_key(const std::string& container_id, const
     long long value;
     while (std::getline(file, line)) {
         std::stringstream ss(line);
-        ss >> k >> value;
-        if (k == key) return value;
+        if (ss >> k >> value) {
+            if (k == key) return value;
+        }
     }
     return -1;
 }
