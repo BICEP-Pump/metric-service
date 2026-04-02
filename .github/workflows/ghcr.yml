@@ -10,7 +10,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: bicep-pump/${{ github.repository }}
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-and-push:
@@ -26,6 +26,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 # Needed to push back to main
+
+      - name: Lowercase IMAGE_NAME
+        id: lowercase_image
+        run: |
+          echo "IMAGE_NAME_LOWER=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
 
       - name: Calculate New Version
         id: versioning
@@ -80,7 +85,7 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.versioning.outputs.DOCKER_TAG }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ (github.ref_name == 'main' || github.event.pull_request.base.ref == 'main') && 'latest' || '' }}
+            ${{ env.REGISTRY }}/${{ steps.lowercase_image.outputs.IMAGE_NAME_LOWER }}:${{ steps.versioning.outputs.DOCKER_TAG }}
+            ${{ (github.ref_name == 'main' || github.event.pull_request.base.ref == 'main') && format('{0}/{1}:latest', env.REGISTRY, steps.lowercase_image.outputs.IMAGE_NAME_LOWER) || '' }}
           labels: |
             org.opencontainers.image.version=${{ steps.versioning.outputs.DOCKER_TAG }}
