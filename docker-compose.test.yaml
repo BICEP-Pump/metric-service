@@ -16,7 +16,7 @@ services:
       - mock-backend
 
   mock-backend:
-    image: python:3.9-slim
+    image: python:3.12-slim
     volumes:
       - ./tests:/tests
     command: >
