@@ -1,5 +1,5 @@
 # Build stage
-FROM alpine:3.18 AS builder
+FROM alpine:3.20 AS builder
 
 RUN apk add --no-cache \
     build-base \
@@ -10,12 +10,12 @@ RUN apk add --no-cache \
 WORKDIR /app
 COPY . .
 
-RUN mkdir build && cd build && \
+RUN mkdir -p build && cd build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release && \
     make -j$(nproc)
 
 # Final stage
-FROM alpine:3.18
+FROM alpine:3.20
 
 RUN apk add --no-cache \
     libstdc++ \
