@@ -11,15 +11,20 @@
 
 TEST(UtilsTest, ConfigParsingDefaults) {
     unsetenv("METRIC_ENDPOINT");
+    unsetenv("METRIC_EXPORT_MODE");
     Config cfg = get_config();
     EXPECT_EQ(cfg.scrape_interval, 10);
+    EXPECT_EQ(cfg.metric_export_mode, MetricExportMode::CORE);
 }
 
 TEST(UtilsTest, ConfigParsingEnv) {
     setenv("METRIC_ENDPOINT", "http://test:9000", 1);
+    setenv("METRIC_EXPORT_MODE", "prometheus", 1);
     Config cfg = get_config();
     EXPECT_EQ(cfg.metric_endpoint, "http://test:9000");
+    EXPECT_EQ(cfg.metric_export_mode, MetricExportMode::PROMETHEUS);
     unsetenv("METRIC_ENDPOINT");
+    unsetenv("METRIC_EXPORT_MODE");
 }
 
 TEST(UtilsTest, ParseIfaddrsLoopbackOnly) {
@@ -58,11 +63,38 @@ TEST(UtilsTest, ParseIfaddrsPriority) {
     EXPECT_EQ(ip, "172.17.0.1");
 }
 
+TEST(UtilsTest, ParseHttpUrlWithPortAndPath) {
+    ParsedHttpUrl parsed;
+    std::string error_message;
+
+    EXPECT_TRUE(parse_http_url(
+        "http://127.0.0.1:19091/metric-services/register/1",
+        parsed,
+        error_message
+    ));
+    EXPECT_EQ(parsed.scheme, "http");
+    EXPECT_EQ(parsed.host, "127.0.0.1");
+    EXPECT_EQ(parsed.port, 19091);
+    EXPECT_EQ(parsed.path, "/metric-services/register/1");
+}
+
+TEST(UtilsTest, ParseHttpUrlRejectsUnsupportedScheme) {
+    ParsedHttpUrl parsed;
+    std::string error_message;
+
+    EXPECT_FALSE(parse_http_url(
+        "https://127.0.0.1:19091/metric-services/register",
+        parsed,
+        error_message
+    ));
+    EXPECT_NE(error_message.find("Unsupported URL scheme"), std::string::npos);
+}
+
 TEST(UtilsTest, RegisterServiceSuccess) {
     auto svr = std::make_shared<httplib::Server>();
     std::atomic<bool> request_received{false};
     
-    svr->Post("/register", [&](const httplib::Request& req, httplib::Response& res) {
+    svr->Post("/metric-services/register", [&](const httplib::Request& req, httplib::Response& res) {
         request_received = true;
         res.status = 200;
         res.set_content("OK", "text/plain");
@@ -76,7 +108,7 @@ TEST(UtilsTest, RegisterServiceSuccess) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     Config cfg;
-    cfg.registration_endpoint = "http://127.0.0.1:19091/register";
+    cfg.registration_endpoint = "http://127.0.0.1:19091/metric-services/register";
     cfg.service_name = "test-service";
     cfg.service_ip = "1.2.3.4";
     cfg.service_port = 8888;

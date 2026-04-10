@@ -25,7 +25,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Needed to push back to main
+          fetch-depth: 0 # Needed to read branch history and push VERSION updates
 
       - name: Lowercase IMAGE_NAME
         id: lowercase_image
@@ -34,43 +34,125 @@ jobs:
 
       - name: Calculate New Version
         id: versioning
+        shell: bash
         run: |
-          CURRENT_VER=$(cat VERSION)
-          BUMP_TYPE="patch"
-          TAG_SUFFIX=""
-          IS_RELEASE="false"
+          set -euo pipefail
+
+          normalize_version() {
+            local version="${1%%-*}"
+            IFS='.' read -r -a parts <<< "$version"
+
+            while [[ "${#parts[@]}" -lt 3 ]]; do
+              parts+=(0)
+            done
+
+            printf '%s.%s.%s\n' "${parts[0]}" "${parts[1]}" "${parts[2]}"
+          }
+
+          bump_version() {
+            local current="$1"
+            local part="$2"
+            local normalized
+            local major
+            local minor
+            local patch
+
+            normalized="$(normalize_version "$current")"
+            IFS='.' read -r major minor patch <<< "$normalized"
+
+            case "$part" in
+              major)
+                ((major += 1))
+                minor=0
+                patch=0
+                ;;
+              minor)
+                ((minor += 1))
+                patch=0
+                ;;
+              patch)
+                ((patch += 1))
+                ;;
+              *)
+                echo "Unsupported bump type: $part" >&2
+                exit 1
+                ;;
+            esac
+
+            printf '%s.%s.%s\n' "$major" "$minor" "$patch"
+          }
+
+          read_version() {
+            tr -d '[:space:]' < "$1"
+          }
+
+          read_version_from_ref() {
+            local ref="$1"
+            git show "${ref}:VERSION" | tr -d '[:space:]'
+          }
+
+          CURRENT_VER="$(read_version VERSION)"
+          NEW_VER="$CURRENT_VER"
+          DOCKER_TAG="$CURRENT_VER"
 
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             SOURCE_BRANCH="${{ github.event.pull_request.head.ref }}"
-            if [[ "$SOURCE_BRANCH" == release/* ]]; then
-              BUMP_TYPE="major"
-            elif [[ "$SOURCE_BRANCH" == feature/* ]]; then
-              BUMP_TYPE="minor"
-            fi
-            IS_RELEASE="true"
-          elif [[ "${{ github.ref_name }}" == "dev" ]]; then
-            # For dev branch, we might not always want to bump the file in the same way, 
-            # but user wants it to work similarly.
-            TAG_SUFFIX="-dev"
-            # We bump patch for dev by default
+            SOURCE_SHA="${{ github.event.pull_request.head.sha }}"
             BUMP_TYPE="patch"
+
+            if [[ "$SOURCE_BRANCH" == "dev" ]]; then
+              if git cat-file -e "${SOURCE_SHA}:VERSION" 2>/dev/null; then
+                NEW_VER="$(read_version_from_ref "$SOURCE_SHA")"
+              fi
+            else
+              if [[ "$SOURCE_BRANCH" == release/* ]]; then
+                BUMP_TYPE="major"
+              elif [[ "$SOURCE_BRANCH" == feature/* ]]; then
+                BUMP_TYPE="minor"
+              fi
+
+              NEW_VER="$(bump_version "$CURRENT_VER" "$BUMP_TYPE")"
+            fi
+
+            DOCKER_TAG="$NEW_VER"
+          elif [[ "${{ github.ref_name }}" == "dev" ]]; then
+            NEW_VER="$(bump_version "$CURRENT_VER" "patch")"
+            DOCKER_TAG="${NEW_VER}-dev"
+          else
+            NEW_VER="$(bump_version "$CURRENT_VER" "patch")"
+            DOCKER_TAG="$NEW_VER"
           fi
 
-          NEW_VER=$(python3 scripts/bump_version.py "$CURRENT_VER" "$BUMP_TYPE")
-          echo "NEW_VERSION=${NEW_VER}" >> $GITHUB_OUTPUT
-          echo "DOCKER_TAG=${NEW_VER}${TAG_SUFFIX}" >> $GITHUB_OUTPUT
-          echo "IS_RELEASE=${IS_RELEASE}" >> $GITHUB_OUTPUT
+          echo "NEW_VERSION=${NEW_VER}" >> "$GITHUB_OUTPUT"
+          echo "DOCKER_TAG=${DOCKER_TAG}" >> "$GITHUB_OUTPUT"
 
-      - name: Update VERSION file
-        # Only update the repository file for merges to main
-        if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
+      - name: Apply VERSION file
+        shell: bash
         run: |
           echo "${{ steps.versioning.outputs.NEW_VERSION }}" > VERSION
+
+      - name: Commit VERSION file
+        if: |
+          (github.event_name == 'push' && github.ref_name == 'dev' && github.actor != 'github-actions[bot]') ||
+          (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- VERSION; then
+            exit 0
+          fi
+
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add VERSION
           git commit -m "Bump version to ${{ steps.versioning.outputs.NEW_VERSION }} [skip ci]"
-          git push origin main
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git push origin HEAD:main
+          else
+            git push origin HEAD:dev
+          fi
 
       - name: Log in to the Container registry
         uses: docker/login-action@v2
