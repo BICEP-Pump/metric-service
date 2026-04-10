@@ -54,9 +54,11 @@ TEST(ExporterTest, PrometheusPushesEachScrapeImmediately) {
 TEST(ExporterTest, RealNetworkPush) {
     auto svr = std::make_shared<httplib::Server>();
     std::atomic<bool> received{false};
+    std::string request_body;
     
     svr->Post("/metrics", [&](const httplib::Request& req, httplib::Response& res) {
         received = true;
+        request_body = req.body;
         res.status = 200;
         res.set_content("OK", "text/plain");
     });
@@ -77,6 +79,7 @@ TEST(ExporterTest, RealNetworkPush) {
     }
     
     EXPECT_TRUE(received.load());
+    EXPECT_NE(request_body.find("\"cpu_usage\":10.5"), std::string::npos);
     
     svr->stop();
     if (server_thread.joinable()) {

@@ -8,11 +8,17 @@
 High-performance C++ service to monitor containerized environments via cgroups v2.
 
 ## Key Features
-- **Direct Scraper**: Parses `/sys/fs/cgroup` files for precision CPU (`usage_usec`) and RAM (`memory.current`) metrics.
+- **Direct Scraper**: Parses `/sys/fs/cgroup` files for precise CPU core usage derived from `usage_usec` deltas and RAM (`memory.current`) metrics.
 - **Docker Mapping**: Resolves container IDs to names using the Docker Engine API.
 - **Self-Discovered IP**: Automatically detects its host/container IP for registration if not provided.
 - **Flexible Exporter**: Can push JSON to a core API or Prometheus text payloads directly to a Pushgateway-compatible endpoint.
 - **Internal Healthcheck**: Simple HTTP `/health` server for orchestration.
+
+## Metric Units
+- `container_cpu_usage` is exported in CPU core units, not percent.
+- `1.0` means one fully utilized CPU core, `0.5` means half a core, and `2.0` means two fully utilized cores.
+- The JSON exporter reports CPU with the `cpu_usage` field in the same core units.
+- `container_memory_usage_bytes` is exported in bytes, and the JSON exporter reports RAM as `ram_mb`.
 
 ## Configuration
 All settings are managed via environment variables.
