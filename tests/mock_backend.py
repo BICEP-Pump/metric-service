@@ -15,7 +15,9 @@ def metrics():
     return jsonify({"status": "ok"}), 201
 
 @app.route('/register', methods=['POST'])
-def register():
+@app.route('/metric-services/register', methods=['POST'])
+@app.route('/metric-services/register/<host_id>', methods=['POST'])
+def register(host_id=None):
     data = request.json
     print(f"Received registration: {json.dumps(data, indent=2)}")
     received_registrations.append(data)

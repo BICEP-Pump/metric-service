@@ -1,7 +1,7 @@
 services:
   bicep-metric-service:
     build: .
-    image: ghcr.io/bicep-pump/bicep-metric-service:latest
+    image: ghcr.io/bicep-pump/metric-service:latest
     container_name: bicep-metric-service
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -10,10 +10,10 @@ services:
     cap_add:
       - SYS_ADMIN # Alternative to privileged if possible
     environment:
+      - METRIC_EXPORT_MODE=core
       - METRIC_ENDPOINT=http://your-backend-api/metrics
-      - REGISTRATION_ENDPOINT=http://your-backend-api/register
+      - REGISTRATION_ENDPOINT=http://your-backend-api/metric-services/register
       - SCRAPE_INTERVAL=5
-      - BATCH_SIZE=10
       - SERVICE_NAME=bicep-metric-service
       - SERVICE_PORT=8080
       - SERVICE_IP=127.0.0.1 # Should be set to container IP or host reachable IP
