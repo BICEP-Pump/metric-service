@@ -11,7 +11,7 @@ High-performance C++ service to monitor containerized environments via cgroups v
 - **Direct Scraper**: Parses `/sys/fs/cgroup` files for precision CPU (`usage_usec`) and RAM (`memory.current`) metrics.
 - **Docker Mapping**: Resolves container IDs to names using the Docker Engine API.
 - **Self-Discovered IP**: Automatically detects its host/container IP for registration if not provided.
-- **Batched Exporter**: Efficiently buffers and pushes JSON metrics to a configurable endpoint.
+- **Flexible Exporter**: Can push JSON to a core API or Prometheus text payloads directly to a Pushgateway-compatible endpoint.
 - **Internal Healthcheck**: Simple HTTP `/health` server for orchestration.
 
 ## Configuration
@@ -20,19 +20,21 @@ All settings are managed via environment variables.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `METRIC_ENDPOINT` | HTTP URL for metrics submission | (required) |
-| `REGISTRATION_ENDPOINT` | HTTP URL for service discovery | (optional) |
-| `SCRAPE_INTERVAL` | Seconds between scrapes | `10` |
-| `BATCH_SIZE` | Metric count before pushing | `10` |
+| `METRIC_EXPORT_MODE` | `core` for JSON-to-backend, `prometheus` for Pushgateway text export | `core` |
+| `REGISTRATION_ENDPOINT` | HTTP URL for service discovery, for example `http://core:8000/metric-services/register` or `http://core:8000/metric-services/register/1` | (optional) |
+| `SCRAPE_INTERVAL` | Seconds between scrapes; each scrape is pushed immediately | `10` |
 | `SERVICE_NAME` | Name reported to registry | `bicep-metric-service` |
 | `SERVICE_PORT` | Healthcheck port | `8080` |
 | `SERVICE_IP` | Service IP address | (auto-detected) |
+
+When `METRIC_EXPORT_MODE=prometheus`, `METRIC_ENDPOINT` should point at a Pushgateway-compatible URL such as `http://host:9091/metrics/job/metric_service_host_1`.
 
 ## Development
 Build requirements: `CMake 3.15+`, `gcc/g++ (C++20)`, `libcurl`, `docker-compose`.
 
 ### Build & Test
 ```bash
-mkdir build && cd build
+mkdir -p build && cd build
 cmake -DBUILD_TESTS=ON ..
 make -j$(nproc)
 ./bicep_tests

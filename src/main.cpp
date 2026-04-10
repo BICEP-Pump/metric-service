@@ -16,8 +16,10 @@ int main() {
 
     std::cout << "--- BICEP Metric Service Starting ---" << std::endl;
     std::cout << "Metric Endpoint: " << config.metric_endpoint << std::endl;
+    std::cout << "Metric Export Mode: "
+              << metric_export_mode_to_string(config.metric_export_mode)
+              << std::endl;
     std::cout << "Scrape Interval: " << config.scrape_interval << "s" << std::endl;
-    std::cout << "Batch Size: " << config.batch_size << std::endl;
 
     // Healthcheck server
     httplib::Server svr;
@@ -33,11 +35,17 @@ int main() {
     });
     health_thread.detach();
 
-    // Register
-    register_service(config);
+    // Keep registration retries in the background until the backend accepts the service.
+    std::thread registration_thread([config]() {
+        register_service_until_success(config);
+    });
+    registration_thread.detach();
 
     Collector collector;
-    Exporter exporter(config.metric_endpoint, config.batch_size);
+    Exporter exporter(
+        config.metric_endpoint,
+        config.metric_export_mode
+    );
 
     std::cout << "Scraping loop started." << std::endl;
 
