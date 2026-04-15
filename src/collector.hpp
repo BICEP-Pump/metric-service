@@ -7,7 +7,7 @@
 
 struct ContainerMetric {
     std::string name;
-    double cpu_percent;
+    double cpu_cores;
     double ram_mb;
     long long timestamp;
 };
@@ -24,7 +24,7 @@ public:
     long long read_cpu_usage(const std::string& container_id);
     long long read_memory_usage(const std::string& container_id);
     long long read_memory_stat_key(const std::string& container_id, const std::string& key);
-    double calculate_cpu_percent(const std::string& container_id, long long current_usage_usec);
+    double calculate_cpu_cores(const std::string& container_id, long long current_usage_usec);
     long long read_file_long(const std::string& path);
 
 private:

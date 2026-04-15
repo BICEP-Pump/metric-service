@@ -117,7 +117,9 @@ long long Collector::read_memory_stat_key(const std::string& container_id, const
     return -1;
 }
 
-double Collector::calculate_cpu_percent(const std::string& container_id, long long current_usage_usec) {
+double Collector::calculate_cpu_cores(
+    const std::string& container_id, long long current_usage_usec
+) {
     auto now = std::chrono::steady_clock::now();
     if (prev_cpu_stats.find(container_id) == prev_cpu_stats.end()) {
         prev_cpu_stats[container_id] = {current_usage_usec, now};
@@ -131,7 +133,7 @@ double Collector::calculate_cpu_percent(const std::string& container_id, long lo
     prev_cpu_stats[container_id] = {current_usage_usec, now};
 
     if (duration <= 0) return 0.0;
-    return (static_cast<double>(delta_usec) / duration) * 100.0;
+    return static_cast<double>(delta_usec) / duration;
 }
 
 std::vector<ContainerMetric> Collector::collect() {
@@ -145,10 +147,10 @@ std::vector<ContainerMetric> Collector::collect() {
         long long mem_bytes = read_memory_usage(id);
 
         if (cpu_usec != -1 && mem_bytes != -1) {
-            double cpu_pct = calculate_cpu_percent(id, cpu_usec);
+            double cpu_cores = calculate_cpu_cores(id, cpu_usec);
             double ram_mb = static_cast<double>(mem_bytes) / 1024.0 / 1024.0;
             
-            metrics.push_back({name, cpu_pct, ram_mb, timestamp});
+            metrics.push_back({name, cpu_cores, ram_mb, timestamp});
         }
     }
     return metrics;

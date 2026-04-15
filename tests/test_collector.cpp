@@ -42,20 +42,20 @@ TEST_F(CollectorTest, FullCollectionLoop) {
     EXPECT_EQ(metrics[0].ram_mb, 1.0);
 }
 
-TEST_F(CollectorTest, CpuPercentCalculation) {
+TEST_F(CollectorTest, CpuCoreCalculation) {
     Collector collector(test_root);
     std::string id = "123";
 
     // First sample
-    double p1 = collector.calculate_cpu_percent(id, 1000000); // 1s usage
-    EXPECT_EQ(p1, 0.0);
+    double cpu1 = collector.calculate_cpu_cores(id, 1000000); // 1s usage
+    EXPECT_EQ(cpu1, 0.0);
 
     // Wait a bit
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-    // Second sample (0.1s usage in the elapsed time)
-    double p2 = collector.calculate_cpu_percent(id, 1100000); 
-    EXPECT_GT(p2, 0.0);
+    // Second sample (0.1s of CPU time in the elapsed wall time)
+    double cpu2 = collector.calculate_cpu_cores(id, 1100000);
+    EXPECT_GT(cpu2, 0.0);
 }
 
 TEST_F(CollectorTest, MemoryRefinement) {
