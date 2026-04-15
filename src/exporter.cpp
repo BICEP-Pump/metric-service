@@ -47,7 +47,7 @@ void Exporter::push_to_core_endpoint(const std::vector<ContainerMetric>& metrics
     for (const auto& m : metrics) {
         j.push_back({
             {"container_name", m.name},
-            {"cpu_percent", m.cpu_percent},
+            {"cpu_usage", m.cpu_cores},
             {"ram_mb", m.ram_mb},
             {"timestamp", m.timestamp}
         });
@@ -126,7 +126,7 @@ std::string Exporter::build_prometheus_payload(
         const std::string container_name =
             escape_prometheus_label_value(metric.name);
         payload << "container_cpu_usage{name=\"" << container_name
-                << "\"} " << metric.cpu_percent << "\n";
+                << "\"} " << metric.cpu_cores << "\n";
         payload << "container_memory_usage_bytes{name=\"" << container_name
                 << "\"} " << (metric.ram_mb * 1024 * 1024) << "\n";
     }
