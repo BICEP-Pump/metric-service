@@ -2,7 +2,7 @@ name: Build and Push to GHCR
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ dev, main ]
     types: [ closed ]
   push:
     branches: [ dev ]
@@ -39,7 +39,9 @@ jobs:
           set -euo pipefail
 
           normalize_version() {
-            local version="${1%%-*}"
+            local version="${1#v}"
+            version="${version%-dev}"
+            version="${version%%-*}"
             IFS='.' read -r -a parts <<< "$version"
 
             while [[ "${#parts[@]}" -lt 3 ]]; do
@@ -47,6 +49,14 @@ jobs:
             done
 
             printf '%s.%s.%s\n' "${parts[0]}" "${parts[1]}" "${parts[2]}"
+          }
+
+          version_tag() {
+            printf 'v%s\n' "$(normalize_version "$1")"
+          }
+
+          dev_version_tag() {
+            printf '%s-dev\n' "$(version_tag "$1")"
           }
 
           bump_version() {
@@ -91,40 +101,87 @@ jobs:
             git show "${ref}:VERSION" | tr -d '[:space:]'
           }
 
-          CURRENT_VER="$(read_version VERSION)"
-          NEW_VER="$CURRENT_VER"
-          DOCKER_TAG="$CURRENT_VER"
+          get_bump_type() {
+            local branch="$1"
 
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            SOURCE_BRANCH="${{ github.event.pull_request.head.ref }}"
-            SOURCE_SHA="${{ github.event.pull_request.head.sha }}"
-            BUMP_TYPE="patch"
+            case "$branch" in
+              release/*|major/*)
+                echo "major"
+                ;;
+              feature/*|feat/*|minor/*)
+                echo "minor"
+                ;;
+              hotfix/*|fix/*|bugfix/*|patch/*)
+                echo "patch"
+                ;;
+              *)
+                echo "patch"
+                ;;
+            esac
+          }
 
-            if [[ "$SOURCE_BRANCH" == "dev" ]]; then
-              if git cat-file -e "${SOURCE_SHA}:VERSION" 2>/dev/null; then
-                NEW_VER="$(read_version_from_ref "$SOURCE_SHA")"
-              fi
-            else
-              if [[ "$SOURCE_BRANCH" == release/* ]]; then
-                BUMP_TYPE="major"
-              elif [[ "$SOURCE_BRANCH" == feature/* ]]; then
-                BUMP_TYPE="minor"
-              fi
+          resolve_branch_version() {
+            local branch="$1"
+            local current="$2"
+            local explicit_version=""
 
-              NEW_VER="$(bump_version "$CURRENT_VER" "$BUMP_TYPE")"
+            if [[ "$branch" =~ ^release/v?([0-9]+(\.[0-9]+){0,2})$ ]]; then
+              explicit_version="${BASH_REMATCH[1]}"
+              normalize_version "$explicit_version"
+              return 0
             fi
 
-            DOCKER_TAG="$NEW_VER"
+            bump_version "$current" "$(get_bump_type "$branch")"
+          }
+
+          CURRENT_VER="$(normalize_version "$(read_version VERSION)")"
+          NEW_VER="$CURRENT_VER"
+          DOCKER_TAG="$(version_tag "$CURRENT_VER")"
+          PUSH_BRANCH="${{ github.ref_name }}"
+          SHOULD_COMMIT_VERSION="false"
+          TAG_LATEST="false"
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE_BRANCH="${{ github.event.pull_request.base.ref }}"
+            SOURCE_BRANCH="${{ github.event.pull_request.head.ref }}"
+            SOURCE_SHA="${{ github.event.pull_request.head.sha }}"
+
+            PUSH_BRANCH="$BASE_BRANCH"
+            SHOULD_COMMIT_VERSION="true"
+
+            if [[ "$BASE_BRANCH" == "dev" ]]; then
+              NEW_VER="$(resolve_branch_version "$SOURCE_BRANCH" "$CURRENT_VER")"
+              DOCKER_TAG="$(dev_version_tag "$NEW_VER")"
+            elif [[ "$BASE_BRANCH" == "main" ]]; then
+              if [[ "$SOURCE_BRANCH" == "dev" ]]; then
+                if git cat-file -e "${SOURCE_SHA}:VERSION" 2>/dev/null; then
+                  NEW_VER="$(normalize_version "$(read_version_from_ref "$SOURCE_SHA")")"
+                fi
+              else
+                NEW_VER="$(resolve_branch_version "$SOURCE_BRANCH" "$CURRENT_VER")"
+              fi
+
+              DOCKER_TAG="$(version_tag "$NEW_VER")"
+              TAG_LATEST="true"
+            else
+              echo "Unsupported pull request target branch: $BASE_BRANCH" >&2
+              exit 1
+            fi
           elif [[ "${{ github.ref_name }}" == "dev" ]]; then
-            NEW_VER="$(bump_version "$CURRENT_VER" "patch")"
-            DOCKER_TAG="${NEW_VER}-dev"
+            DOCKER_TAG="$(dev_version_tag "$CURRENT_VER")"
           else
-            NEW_VER="$(bump_version "$CURRENT_VER" "patch")"
-            DOCKER_TAG="$NEW_VER"
+            DOCKER_TAG="$(version_tag "$CURRENT_VER")"
+
+            if [[ "${{ github.ref_name }}" == "main" ]]; then
+              TAG_LATEST="true"
+            fi
           fi
 
           echo "NEW_VERSION=${NEW_VER}" >> "$GITHUB_OUTPUT"
           echo "DOCKER_TAG=${DOCKER_TAG}" >> "$GITHUB_OUTPUT"
+          echo "PUSH_BRANCH=${PUSH_BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "SHOULD_COMMIT_VERSION=${SHOULD_COMMIT_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "TAG_LATEST=${TAG_LATEST}" >> "$GITHUB_OUTPUT"
 
       - name: Apply VERSION file
         shell: bash
@@ -132,9 +189,7 @@ jobs:
           echo "${{ steps.versioning.outputs.NEW_VERSION }}" > VERSION
 
       - name: Commit VERSION file
-        if: |
-          (github.event_name == 'push' && github.ref_name == 'dev' && github.actor != 'github-actions[bot]') ||
-          (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+        if: steps.versioning.outputs.SHOULD_COMMIT_VERSION == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -147,12 +202,7 @@ jobs:
           git config --local user.name "GitHub Action"
           git add VERSION
           git commit -m "Bump version to ${{ steps.versioning.outputs.NEW_VERSION }} [skip ci]"
-
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            git push origin HEAD:main
-          else
-            git push origin HEAD:dev
-          fi
+          git push origin HEAD:${{ steps.versioning.outputs.PUSH_BRANCH }}
 
       - name: Log in to the Container registry
         uses: docker/login-action@v2
@@ -161,13 +211,32 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Prepare Docker tags
+        id: tags
+        shell: bash
+        run: |
+          IMAGE_REF="${{ env.REGISTRY }}/${{ steps.lowercase_image.outputs.IMAGE_NAME_LOWER }}"
+          {
+            echo "value<<EOF"
+            echo "${IMAGE_REF}:${{ steps.versioning.outputs.DOCKER_TAG }}"
+            if [[ "${{ steps.versioning.outputs.TAG_LATEST }}" == "true" ]]; then
+              echo "${IMAGE_REF}:latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ steps.lowercase_image.outputs.IMAGE_NAME_LOWER }}:${{ steps.versioning.outputs.DOCKER_TAG }}
-            ${{ (github.ref_name == 'main' || github.event.pull_request.base.ref == 'main') && format('{0}/{1}:latest', env.REGISTRY, steps.lowercase_image.outputs.IMAGE_NAME_LOWER) || '' }}
+          tags: ${{ steps.tags.outputs.value }}
           labels: |
             org.opencontainers.image.version=${{ steps.versioning.outputs.DOCKER_TAG }}
