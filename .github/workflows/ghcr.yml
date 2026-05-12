@@ -5,8 +5,17 @@ on:
     branches: [ dev, main ]
     types: [ closed ]
   push:
-    branches: [ dev ]
+    branches: [ dev, main ]
   workflow_dispatch:
+    inputs:
+      target_branch:
+        description: Branch to rebuild and publish to GHCR
+        required: true
+        default: main
+        type: choice
+        options:
+          - main
+          - dev
 
 env:
   REGISTRY: ghcr.io
@@ -14,7 +23,7 @@ env:
 
 jobs:
   build-and-push:
-    # Only run for closed/merged main PRs OR push to dev
+    # Run for merged PRs, direct pushes to tracked branches, or manual dispatch.
     if: (github.event_name == 'pull_request' && github.event.pull_request.merged == true) || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
@@ -25,6 +34,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.inputs.target_branch || github.ref }}
           fetch-depth: 0 # Needed to read branch history and push VERSION updates
 
       - name: Lowercase IMAGE_NAME
@@ -137,7 +147,8 @@ jobs:
           CURRENT_VER="$(normalize_version "$(read_version VERSION)")"
           NEW_VER="$CURRENT_VER"
           DOCKER_TAG="$(version_tag "$CURRENT_VER")"
-          PUSH_BRANCH="${{ github.ref_name }}"
+          TARGET_BRANCH="${{ github.event.inputs.target_branch || github.ref_name }}"
+          PUSH_BRANCH="$TARGET_BRANCH"
           SHOULD_COMMIT_VERSION="false"
           TAG_LATEST="false"
 
@@ -167,12 +178,12 @@ jobs:
               echo "Unsupported pull request target branch: $BASE_BRANCH" >&2
               exit 1
             fi
-          elif [[ "${{ github.ref_name }}" == "dev" ]]; then
+          elif [[ "$TARGET_BRANCH" == "dev" ]]; then
             DOCKER_TAG="$(dev_version_tag "$CURRENT_VER")"
           else
             DOCKER_TAG="$(version_tag "$CURRENT_VER")"
 
-            if [[ "${{ github.ref_name }}" == "main" ]]; then
+            if [[ "$TARGET_BRANCH" == "main" ]]; then
               TAG_LATEST="true"
             fi
           fi
